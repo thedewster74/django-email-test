@@ -1,7 +1,15 @@
 import ssl
 import socket
+from datetime import datetime
 from django.core.management.base import BaseCommand
 from django.conf import settings
+
+try:
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+    HAS_CRYPTOGRAPHY = True
+except ImportError:
+    HAS_CRYPTOGRAPHY = False
 
 
 class Command(BaseCommand):
@@ -37,15 +45,27 @@ class Command(BaseCommand):
             # For STARTTLS (port 587), we need to do SMTP handshake first
             if port == 587:
                 self.stdout.write('Port 587 detected - attempting STARTTLS...')
+
+                # Read server greeting (220)
+                greeting = sock.recv(4096)
+                self.stdout.write(f'Server greeting: {greeting.decode("utf-8", errors="ignore").strip()}')
+
                 # Send EHLO command
                 sock.sendall(b'EHLO localhost\r\n')
-                response = sock.recv(1024)
-                self.stdout.write(f'EHLO response: {response.decode("utf-8", errors="ignore").strip()}')
+                # Read EHLO response (may be multi-line with 250-)
+                ehlo_response = b''
+                while True:
+                    chunk = sock.recv(4096)
+                    ehlo_response += chunk
+                    # Check if we got the final line (250 without dash)
+                    if b'\n250 ' in chunk or (chunk.endswith(b'\n') and not b'250-' in chunk.split(b'\n')[-2]):
+                        break
+                self.stdout.write(f'EHLO response: {ehlo_response.decode("utf-8", errors="ignore").strip()}')
 
                 # Send STARTTLS command
                 sock.sendall(b'STARTTLS\r\n')
-                response = sock.recv(1024)
-                self.stdout.write(f'STARTTLS response: {response.decode("utf-8", errors="ignore").strip()}\n')
+                starttls_response = sock.recv(4096)
+                self.stdout.write(f'STARTTLS response: {starttls_response.decode("utf-8", errors="ignore").strip()}\n')
 
             # Wrap socket with SSL
             try:
@@ -59,44 +79,93 @@ class Command(BaseCommand):
                 sock = socket.create_connection((host, port), timeout=10)
 
                 if port == 587:
+                    # Read greeting
+                    sock.recv(4096)
+                    # Send EHLO
                     sock.sendall(b'EHLO localhost\r\n')
-                    sock.recv(1024)
+                    # Read EHLO response
+                    while True:
+                        chunk = sock.recv(4096)
+                        if b'\n250 ' in chunk or (chunk.endswith(b'\n') and not b'250-' in chunk.split(b'\n')[-2]):
+                            break
+                    # Send STARTTLS
                     sock.sendall(b'STARTTLS\r\n')
-                    sock.recv(1024)
+                    # Read STARTTLS response
+                    sock.recv(4096)
 
                 ssl_sock = context.wrap_socket(sock, server_hostname=host)
                 self.stdout.write(self.style.WARNING('Certificate retrieved without verification\n'))
 
-            # Get certificate
-            cert = ssl_sock.getpeercert()
+            # Get certificate in binary form
+            cert_der = ssl_sock.getpeercert(binary_form=True)
 
             # Display certificate information
             self.stdout.write(self.style.SUCCESS('Certificate Details:'))
             self.stdout.write('-' * 50)
 
-            # Subject (Common Name)
-            subject = dict(x[0] for x in cert.get('subject', []))
-            common_name = subject.get('commonName', 'N/A')
-            self.stdout.write(f'Common Name (CN): {common_name}')
+            # Parse certificate
+            if HAS_CRYPTOGRAPHY and cert_der:
+                cert_obj = x509.load_der_x509_certificate(cert_der, default_backend())
 
-            # Issuer
-            issuer = dict(x[0] for x in cert.get('issuer', []))
-            issuer_cn = issuer.get('commonName', 'N/A')
-            self.stdout.write(f'Issuer: {issuer_cn}')
+                # Common Name
+                try:
+                    common_name = cert_obj.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value
+                except (IndexError, AttributeError):
+                    common_name = 'N/A'
+                self.stdout.write(f'Common Name (CN): {common_name}')
 
-            # Validity period
-            self.stdout.write(f'Not Before: {cert.get("notBefore", "N/A")}')
-            self.stdout.write(f'Not After: {cert.get("notAfter", "N/A")}')
+                # Issuer
+                try:
+                    issuer_cn = cert_obj.issuer.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value
+                except (IndexError, AttributeError):
+                    issuer_cn = 'N/A'
+                self.stdout.write(f'Issuer: {issuer_cn}')
 
-            # Subject Alternative Names (SANs)
-            self.stdout.write('\nSubject Alternative Names (SANs):')
-            san_list = []
-            for san_type, san_value in cert.get('subjectAltName', []):
-                san_list.append(san_value)
-                self.stdout.write(f'  - {san_value}')
+                # Validity period
+                self.stdout.write(f'Not Before: {cert_obj.not_valid_before_utc}')
+                self.stdout.write(f'Not After: {cert_obj.not_valid_after_utc}')
 
-            if not san_list:
-                self.stdout.write('  (none)')
+                # Subject Alternative Names (SANs)
+                self.stdout.write('\nSubject Alternative Names (SANs):')
+                san_list = []
+                try:
+                    san_ext = cert_obj.extensions.get_extension_for_oid(x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+                    for san in san_ext.value:
+                        if isinstance(san, x509.DNSName):
+                            san_list.append(san.value)
+                            self.stdout.write(f'  - {san.value}')
+                except x509.ExtensionNotFound:
+                    pass
+
+                if not san_list:
+                    self.stdout.write('  (none)')
+            else:
+                # Fallback to getpeercert() dict form
+                cert = ssl_sock.getpeercert()
+
+                # Subject (Common Name)
+                subject = dict(x[0] for x in cert.get('subject', []))
+                common_name = subject.get('commonName', 'N/A')
+                self.stdout.write(f'Common Name (CN): {common_name}')
+
+                # Issuer
+                issuer = dict(x[0] for x in cert.get('issuer', []))
+                issuer_cn = issuer.get('commonName', 'N/A')
+                self.stdout.write(f'Issuer: {issuer_cn}')
+
+                # Validity period
+                self.stdout.write(f'Not Before: {cert.get("notBefore", "N/A")}')
+                self.stdout.write(f'Not After: {cert.get("notAfter", "N/A")}')
+
+                # Subject Alternative Names (SANs)
+                self.stdout.write('\nSubject Alternative Names (SANs):')
+                san_list = []
+                for san_type, san_value in cert.get('subjectAltName', []):
+                    san_list.append(san_value)
+                    self.stdout.write(f'  - {san_value}')
+
+                if not san_list:
+                    self.stdout.write('  (none)')
 
             # Provide recommendations
             self.stdout.write('\n' + '=' * 50)
