@@ -1,21 +1,17 @@
-[project]
+[tool.poetry]
 name = "email-test-poc"
 version = "0.1.0"
 description = "Django PoC for testing email endpoints"
-authors = [
-    {name = "Keyovia Team"}
-]
+authors = ["Keyovia Team"]
 readme = "README.md"
-requires-python = ">=3.12,<4.0"
-dependencies = [
-    "django (==6.0.1)",
-    "django-environ (>=0.12.0,<0.13.0)",
-    "gunicorn (>=23.0.0,<24.0.0)",
-    "cryptography (>=46.0.3,<47.0.0)"
-]
-package-mode = false
 
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+django = "6.0.1"
+django-environ = ">=0.12.0,<0.13.0"
+gunicorn = ">=23.0.0,<24.0.0"
+cryptography = ">=46.0.3,<47.0.0"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
