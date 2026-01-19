@@ -32,7 +32,16 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING(f'Sending test email to: {to_email}'))
         self.stdout.write(f'Subject: {subject}')
+        self.stdout.write(self.style.NOTICE('\n=== Email Configuration ==='))
         self.stdout.write(f'Backend: {settings.EMAIL_BACKEND}')
+        self.stdout.write(f'Host: {settings.EMAIL_HOST}')
+        self.stdout.write(f'Port: {settings.EMAIL_PORT}')
+        self.stdout.write(f'Use TLS: {settings.EMAIL_USE_TLS}')
+        self.stdout.write(f'Use SSL: {settings.EMAIL_USE_SSL}')
+        self.stdout.write(f'User: {settings.EMAIL_HOST_USER if settings.EMAIL_HOST_USER else "(not set)"}')
+        self.stdout.write(f'Password: {"(set)" if settings.EMAIL_HOST_PASSWORD else "(not set)"}')
+        self.stdout.write(f'From: {settings.DEFAULT_FROM_EMAIL}')
+        self.stdout.write('=' * 27 + '\n')
 
         try:
             send_mail(
