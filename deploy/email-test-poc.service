@@ -1,0 +1,20 @@
+[Unit]
+Description=Email Test PoC Django Application
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/email-test-poc
+Environment="PATH=/opt/email-test-poc/.venv/bin"
+EnvironmentFile=/opt/email-test-poc/.env
+ExecStart=/opt/email-test-poc/.venv/bin/gunicorn config.wsgi:application -c /opt/email-test-poc/gunicorn_config.py
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
