@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Email Test PoC
 
 A Django 6.0.1 proof-of-concept application for testing email endpoint connectivity. This project provides REST API endpoints to test email sending functionality with configurable SMTP settings managed through environment variables.
@@ -155,3 +156,7 @@ poetry run gunicorn config.wsgi:application -c gunicorn_config.py
 ├── manage.py            # Django management script
 └── pyproject.toml       # Poetry dependencies
 ```
+=======
+# django-email-test
+A Django 6.0.1 proof-of-concept application for testing email endpoint connectivity.
+>>>>>>> 2a382e764f1e0a89c1690346d33c8303bb18bff2
