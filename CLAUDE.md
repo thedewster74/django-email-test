@@ -31,6 +31,10 @@ poetry run python manage.py createsuperuser
 
 # Open Django shell
 poetry run python manage.py shell
+
+# Send test email
+poetry run python manage.py send_test_email recipient@example.com
+poetry run python manage.py send_test_email recipient@example.com --subject "Custom Subject" --message "Custom message"
 ```
 
 ### Dependency Management
@@ -74,6 +78,7 @@ bash deploy/deploy.sh
 - **email_test/**: Django app for email testing functionality
   - `views.py`: Contains three API endpoints (send text, send HTML, get config status)
   - `urls.py`: App-level URL routing
+  - `management/commands/send_test_email.py`: Management command for sending test emails
   - All endpoints return JSON responses
 
 - **deploy/**: Deployment configuration files
